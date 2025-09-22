@@ -216,7 +216,7 @@ function App() {
                 cursor: isSyncing ? "not-allowed" : "pointer",
               }}
             >
-              {isSyncing ? "🔄 Синхронизация..." : "🔄 Синхронизировать"}
+              {isSyncing ? "🔄 Синхронизация..." : "🔄 секс пон"}
             </button>
           )}
           <div
