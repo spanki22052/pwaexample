@@ -1,0 +1,20 @@
+services:
+  photo-pwa:
+    build: .
+    ports:
+      - "3000:3000"  # React приложение
+      - "3001:3001"  # Node.js сервер
+    volumes:
+      - ./uploads:/app/uploads  # Монтируем папку для загруженных файлов
+      - /app/node_modules       # Исключаем node_modules из монтирования
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - SERVER_PORT=3001
+    restart: unless-stopped
+    networks:
+      - photo-pwa-network
+
+networks:
+  photo-pwa-network:
+    driver: bridge
