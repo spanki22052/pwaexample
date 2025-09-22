@@ -78,6 +78,7 @@ function App() {
   useEffect(() => {
     // При первом запуске загружаем с синхронизацией с сервером
     loadPhotos(true);
+    console.log("initi");
 
     // Проверяем разрешения при запуске приложения
     const checkPermissions = async () => {
