@@ -1,6 +1,7 @@
 {
   "short_name": "Photo PWA",
   "name": "Photo Upload PWA",
+  "description": "PWA приложение для загрузки и управления фотографиями с поддержкой камеры",
   "icons": [
     {
       "src": "favicon.ico",
@@ -10,16 +11,66 @@
     {
       "src": "logo192.png",
       "type": "image/png",
-      "sizes": "192x192"
+      "sizes": "192x192",
+      "purpose": "any maskable"
     },
     {
       "src": "logo512.png",
       "type": "image/png",
-      "sizes": "512x512"
+      "sizes": "512x512",
+      "purpose": "any maskable"
     }
   ],
   "start_url": ".",
   "display": "standalone",
-  "theme_color": "#000000",
-  "background_color": "#ffffff"
+  "orientation": "portrait-primary",
+  "theme_color": "#007bff",
+  "background_color": "#ffffff",
+  "scope": "/",
+  "lang": "ru",
+  "dir": "ltr",
+  "categories": ["photo", "utilities", "productivity"],
+  "screenshots": [
+    {
+      "src": "screenshot-wide.png",
+      "sizes": "1280x720",
+      "type": "image/png",
+      "form_factor": "wide"
+    },
+    {
+      "src": "screenshot-narrow.png",
+      "sizes": "750x1334",
+      "type": "image/png",
+      "form_factor": "narrow"
+    }
+  ],
+  "permissions": ["camera", "storage-access", "persistent-storage"],
+  "features": ["camera", "file-system-access", "web-share"],
+  "share_target": {
+    "action": "/",
+    "method": "POST",
+    "enctype": "multipart/form-data",
+    "params": {
+      "files": [
+        {
+          "name": "photos",
+          "accept": ["image/*"]
+        }
+      ]
+    }
+  },
+  "file_handlers": [
+    {
+      "action": "/",
+      "accept": {
+        "image/*": [".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".svg"]
+      }
+    }
+  ],
+  "protocol_handlers": [
+    {
+      "protocol": "web+photoupload",
+      "url": "/?photo=%s"
+    }
+  ]
 }

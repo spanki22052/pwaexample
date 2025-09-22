@@ -3,6 +3,11 @@ import PhotoUploader from "./components/PhotoUploader";
 import PhotoGrid from "./components/PhotoGrid";
 import NetworkStatus from "./components/NetworkStatus";
 import { photoService } from "./services/PhotoService";
+import {
+  checkAllPermissions,
+  displayPermissionsInfo,
+  isHTTPS,
+} from "./utils/permissions";
 
 function App() {
   const [photos, setPhotos] = useState([]);
@@ -56,6 +61,25 @@ function App() {
   // Загрузка фотографий при инициализации
   useEffect(() => {
     loadPhotos();
+
+    // Проверяем разрешения при запуске приложения
+    const checkPermissions = async () => {
+      try {
+        const permissions = await checkAllPermissions();
+        displayPermissionsInfo(permissions);
+
+        // Предупреждаем если не HTTPS (кроме localhost)
+        if (!isHTTPS() && window.location.hostname !== "localhost") {
+          console.warn(
+            "⚠️ Приложение работает по HTTP. Для полной функциональности камеры необходим HTTPS."
+          );
+        }
+      } catch (error) {
+        console.error("Ошибка при проверке разрешений:", error);
+      }
+    };
+
+    checkPermissions();
   }, [loadPhotos]);
 
   // Попытка отправить отложенные фотографии при восстановлении сети

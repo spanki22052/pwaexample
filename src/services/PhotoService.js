@@ -54,8 +54,18 @@ class PhotoService {
 
       const photos = await this.db.getAll(STORE_NAME);
 
-      // Восстанавливаем File объекты из ArrayBuffer
+      // Восстанавливаем File объекты из ArrayBuffer и устанавливаем правильные URL
       return photos.map((photo) => {
+        // Если фото загружено на сервер, используем серверный URL
+        if (photo.status === "uploaded" && photo.serverFilename) {
+          return {
+            ...photo,
+            url: `http://localhost:3001/uploads/${photo.serverFilename}`,
+            // Не создаем File объект для загруженных фото, он не нужен
+          };
+        }
+
+        // Для локальных фото создаем File объект
         if (photo.fileData) {
           const file = new File([photo.fileData], photo.fileName, {
             type: photo.fileType,
@@ -65,6 +75,7 @@ class PhotoService {
             file: file,
           };
         }
+
         return photo;
       });
     } catch (error) {

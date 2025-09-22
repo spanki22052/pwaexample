@@ -3,15 +3,84 @@
   <head>
     <meta charset="utf-8" />
     <link rel="icon" href="%PUBLIC_URL%/favicon.ico" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#000000" />
-    <meta name="description" content="PWA для загрузки фотографий с офлайн поддержкой" />
+
+    <!-- Основные мета-теги для мобильных устройств -->
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, user-scalable=no, viewport-fit=cover"
+    />
+    <meta name="theme-color" content="#007bff" />
+    <meta
+      name="description"
+      content="PWA приложение для загрузки и управления фотографиями с поддержкой камеры и офлайн режима"
+    />
+
+    <!-- PWA мета-теги -->
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="application-name" content="Photo PWA" />
+
+    <!-- Apple мета-теги -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="Photo PWA" />
     <link rel="apple-touch-icon" href="%PUBLIC_URL%/logo192.png" />
+    <link
+      rel="apple-touch-icon"
+      sizes="152x152"
+      href="%PUBLIC_URL%/logo192.png"
+    />
+    <link
+      rel="apple-touch-icon"
+      sizes="180x180"
+      href="%PUBLIC_URL%/logo192.png"
+    />
+    <link
+      rel="apple-touch-icon"
+      sizes="167x167"
+      href="%PUBLIC_URL%/logo192.png"
+    />
+
+    <!-- Microsoft мета-теги -->
+    <meta name="msapplication-TileImage" content="%PUBLIC_URL%/logo192.png" />
+    <meta name="msapplication-TileColor" content="#007bff" />
+    <meta
+      name="msapplication-config"
+      content="%PUBLIC_URL%/browserconfig.xml"
+    />
+
+    <!-- Разрешения и возможности -->
+    <meta
+      http-equiv="Permissions-Policy"
+      content="camera=*, microphone=*, geolocation=*, payment=*"
+    />
+    <meta name="format-detection" content="telephone=no" />
+
+    <!-- Безопасность -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="
+      default-src 'self'; 
+      script-src 'self' 'unsafe-inline' 'unsafe-eval'; 
+      style-src 'self' 'unsafe-inline'; 
+      img-src 'self' data: blob: http: https:; 
+      media-src 'self' blob:; 
+      connect-src 'self' http://localhost:3001 ws://localhost:3000;
+      font-src 'self';
+    "
+    />
+
+    <!-- Manifest -->
     <link rel="manifest" href="%PUBLIC_URL%/manifest.json" />
+
+    <!-- Preload критичных ресурсов -->
+    <link rel="preload" href="%PUBLIC_URL%/logo192.png" as="image" />
+
     <title>Photo Upload PWA</title>
   </head>
   <body>
-    <noscript>Вам необходимо включить JavaScript для работы этого приложения.</noscript>
+    <noscript
+      >Вам необходимо включить JavaScript для работы этого приложения.</noscript
+    >
     <div id="root"></div>
   </body>
 </html>

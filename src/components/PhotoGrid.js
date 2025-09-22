@@ -8,6 +8,12 @@ const PhotoGrid = ({ photos, onRetryUpload, onDeletePhoto, isOnline }) => {
     const urlCache = urlCacheRef.current;
 
     return photos.map((photo) => {
+      // Если уже есть серверный URL, используем его
+      if (photo.url && photo.status === "uploaded") {
+        return photo;
+      }
+
+      // Для локальных файлов создаем blob URL
       if (photo.file && !photo.url) {
         // Создаем URL только если его нет в кэше
         if (!urlCache.has(photo.id)) {
@@ -18,6 +24,7 @@ const PhotoGrid = ({ photos, onRetryUpload, onDeletePhoto, isOnline }) => {
           url: urlCache.get(photo.id),
         };
       }
+
       return photo;
     });
   }, [photos]);
@@ -153,6 +160,7 @@ const PhotoItem = memo(
     }, [onDeletePhoto, photo.id]);
 
     const handleImageError = useCallback((e) => {
+      console.error(`Ошибка загрузки изображения: ${e.target.src}`);
       e.target.src =
         "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjZGRkIi8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtZmFtaWx5PSJBcmlhbCIgZm9udC1zaXplPSIxNCIgZmlsbD0iIzk5OSIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZHk9Ii4zZW0iPk5vIEltYWdlPC90ZXh0Pjwvc3ZnPg==";
     }, []);

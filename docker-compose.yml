@@ -1,12 +1,20 @@
 services:
   photo-pwa:
-    build: .
+    build: 
+      context: .
+      dockerfile: Dockerfile
+      target: production
+      # Кэшируем слои Docker для быстрой пересборки
+      cache_from:
+        - node:18-alpine
     ports:
       - "3000:3000"  # React приложение
       - "3001:3001"  # Node.js сервер
     volumes:
       - ./uploads:/app/uploads  # Монтируем папку для загруженных файлов
-      - /app/node_modules       # Исключаем node_modules из монтирования
+      # Создаем именованный том для node_modules чтобы избежать конфликтов
+      - node_modules_cache:/app/node_modules
+      - server_node_modules_cache:/app/server/node_modules
     environment:
       - NODE_ENV=production
       - PORT=3000
@@ -14,6 +22,20 @@ services:
     restart: unless-stopped
     networks:
       - photo-pwa-network
+    # Добавляем проверку здоровья
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000", "||", "exit", "1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+# Именованные тома для кэширования node_modules
+volumes:
+  node_modules_cache:
+    driver: local
+  server_node_modules_cache:
+    driver: local
 
 networks:
   photo-pwa-network:
