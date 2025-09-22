@@ -1,5 +1,5 @@
 import { openDB } from "idb";
-import config from "../config.js";
+import config from "../config";
 
 const DB_NAME = "PhotoPWA";
 const DB_VERSION = 1;
@@ -56,8 +56,16 @@ class PhotoService {
       // Получаем локальные фотографии из IndexedDB
       const localPhotos = await this.db.getAll(STORE_NAME);
 
-      // Получаем серверные фотографии
-      const serverPhotos = await this.getServerPhotos();
+      // Получаем серверные фотографии (только если онлайн)
+      let serverPhotos = [];
+      try {
+        if (navigator.onLine) {
+          serverPhotos = await this.loadPhotosFromServer();
+        }
+      } catch (error) {
+        console.warn("Не удалось загрузить серверные фото:", error);
+        serverPhotos = [];
+      }
 
       // Создаем Set ID локальных фотографий для быстрой проверки
       const localPhotoIds = new Set(localPhotos.map((p) => p.id));
@@ -109,38 +117,6 @@ class PhotoService {
         );
     } catch (error) {
       console.error("Ошибка загрузки фотографий:", error);
-      return [];
-    }
-  }
-
-  async getServerPhotos() {
-    try {
-      const response = await fetch(`${config.API_URL}/api/files`);
-
-      if (!response.ok) {
-        // Если сервер недоступен, возвращаем пустой массив
-        console.warn("Сервер недоступен для загрузки фотографий");
-        return [];
-      }
-
-      const data = await response.json();
-      console.log(config);
-      console.log(response.json());
-
-      // Преобразуем серверные файлы в формат, совместимый с нашими фотографиями
-      return data.files.map((file) => ({
-        id: `server-${file.filename}`, // Уникальный ID для серверных файлов
-        name: file.filename,
-        size: file.size,
-        status: "uploaded",
-        createdAt: file.uploadedAt,
-        uploadedAt: file.uploadedAt,
-        url: `${config.API_URL}${file.url}`,
-        serverFilename: file.filename,
-        isServerPhoto: true, // Флаг для идентификации серверных фото
-      }));
-    } catch (error) {
-      console.warn("Ошибка загрузки серверных фотографий:", error);
       return [];
     }
   }
@@ -296,6 +272,146 @@ class PhotoService {
       await this.updatePhotoStatus(photoData.id, "error", error.message);
 
       throw error;
+    }
+  }
+
+  // Загружает список фотографий с сервера
+  async loadPhotosFromServer() {
+    try {
+      const apiUrl = `${config.API_URL}/api/files`;
+      console.log("Загружаем фотографии с сервера:", apiUrl);
+
+      const response = await fetch(apiUrl, {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      const serverPhotos = data.files || [];
+
+      console.log(`Найдено ${serverPhotos.length} фотографий на сервере`);
+
+      // Преобразуем серверные фотографии в формат приложения
+      const transformedPhotos = serverPhotos.map((serverPhoto) => ({
+        id: `server_${serverPhoto.filename}`, // Уникальный ID для серверных фото
+        name: serverPhoto.filename,
+        size: serverPhoto.size,
+        status: "uploaded",
+        createdAt: serverPhoto.uploadedAt,
+        serverFilename: serverPhoto.filename,
+        url: `${config.API_URL}${serverPhoto.url}`,
+        isFromServer: true, // Флаг что это фото с сервера
+      }));
+
+      return transformedPhotos;
+    } catch (error) {
+      console.error("Ошибка загрузки фотографий с сервера:", error);
+      return [];
+    }
+  }
+
+  // Синхронизирует локальные фото с серверными
+  async syncWithServer(forceReload = false) {
+    try {
+      if (!this.db) await this.initDB();
+
+      // Загружаем фотографии с сервера
+      const serverPhotos = await this.loadPhotosFromServer();
+
+      // Получаем локальные фотографии
+      const localPhotos = await this.db.getAll(STORE_NAME);
+
+      // Создаем Set из имен файлов на сервере для быстрого поиска
+      const serverFilenames = new Set(
+        serverPhotos.map((photo) => photo.serverFilename)
+      );
+
+      // Обновляем статус локальных фото, которые есть на сервере
+      for (const localPhoto of localPhotos) {
+        if (
+          localPhoto.serverFilename &&
+          serverFilenames.has(localPhoto.serverFilename)
+        ) {
+          if (localPhoto.status !== "uploaded") {
+            localPhoto.status = "uploaded";
+            await this.db.put(STORE_NAME, localPhoto);
+          }
+        }
+      }
+
+      // Добавляем серверные фото, которых нет в локальной базе
+      const localServerFilenames = new Set(
+        localPhotos
+          .filter((photo) => photo.serverFilename)
+          .map((photo) => photo.serverFilename)
+      );
+
+      for (const serverPhoto of serverPhotos) {
+        if (
+          !localServerFilenames.has(serverPhoto.serverFilename) ||
+          forceReload
+        ) {
+          // Сохраняем серверное фото в локальную базу
+          // При forceReload обновляем даже существующие серверные фото
+          await this.db.put(STORE_NAME, serverPhoto);
+          if (forceReload) {
+            console.log(`🔄 Обновлено серверное фото: ${serverPhoto.name}`);
+          }
+        }
+      }
+
+      console.log("Синхронизация с сервером завершена");
+      return true;
+    } catch (error) {
+      console.error("Ошибка синхронизации с сервером:", error);
+      return false;
+    }
+  }
+
+  // Получает все фотографии с учетом синхронизации с сервером
+  async getAllPhotosWithSync() {
+    try {
+      console.log("🔄 Начинаем синхронизацию с сервером...");
+
+      // Получаем локальные фото до синхронизации
+      const localPhotosBeforeSync = await this.getAllPhotos();
+      console.log(
+        `📱 Локальных фото до синхронизации: ${localPhotosBeforeSync.length}`
+      );
+
+      // Синхронизируемся с сервером
+      await this.syncWithServer();
+
+      // Получаем все фотографии после синхронизации
+      const allPhotosAfterSync = await this.getAllPhotos();
+      console.log(
+        `📊 Всего фото после синхронизации: ${allPhotosAfterSync.length}`
+      );
+
+      const serverPhotos = allPhotosAfterSync.filter(
+        (photo) => photo.isFromServer
+      );
+      const localPhotos = allPhotosAfterSync.filter(
+        (photo) => !photo.isFromServer
+      );
+
+      console.log(`🌐 Серверных фото: ${serverPhotos.length}`);
+      console.log(`📱 Локальных фото: ${localPhotos.length}`);
+      console.log("✅ Синхронизация завершена успешно!");
+
+      return allPhotosAfterSync;
+    } catch (error) {
+      console.error("❌ Ошибка получения фотографий с синхронизацией:", error);
+      // Если синхронизация не удалась, возвращаем только локальные фото
+      const localPhotos = await this.getAllPhotos();
+      console.log(`📱 Возвращаем только локальные фото: ${localPhotos.length}`);
+      return localPhotos;
     }
   }
 
