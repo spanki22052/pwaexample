@@ -53,34 +53,92 @@ class PhotoService {
     try {
       if (!this.db) await this.initDB();
 
-      const photos = await this.db.getAll(STORE_NAME);
+      // Получаем локальные фотографии из IndexedDB
+      const localPhotos = await this.db.getAll(STORE_NAME);
+
+      // Получаем серверные фотографии
+      const serverPhotos = await this.getServerPhotos();
+
+      // Создаем Set ID локальных фотографий для быстрой проверки
+      const localPhotoIds = new Set(localPhotos.map((p) => p.id));
+
+      // Объединяем локальные и серверные фотографии
+      const allPhotos = [...localPhotos];
+
+      // Добавляем серверные фотографии, которых нет в локальной базе
+      for (const serverPhoto of serverPhotos) {
+        if (!localPhotoIds.has(serverPhoto.id)) {
+          allPhotos.push(serverPhoto);
+        }
+      }
 
       // Восстанавливаем File объекты из ArrayBuffer и устанавливаем правильные URL
-      return photos.map((photo) => {
-        // Если фото загружено на сервер, используем серверный URL
-        if (photo.status === "uploaded" && photo.serverFilename) {
-          return {
-            ...photo,
-            url: `${config.API_URL}/uploads/${photo.serverFilename}`,
-            // Не создаем File объект для загруженных фото, он не нужен
-          };
-        }
+      return allPhotos
+        .map((photo) => {
+          // Если фото загружено на сервер, используем серверный URL
+          if (photo.status === "uploaded" && photo.serverFilename) {
+            return {
+              ...photo,
+              url: `${config.API_URL}/uploads/${photo.serverFilename}`,
+              // Не создаем File объект для загруженных фото, он не нужен
+            };
+          }
 
-        // Для локальных фото создаем File объект
-        if (photo.fileData) {
-          const file = new File([photo.fileData], photo.fileName, {
-            type: photo.fileType,
-          });
-          return {
-            ...photo,
-            file: file,
-          };
-        }
+          // Для серверных фото, которых нет в локальной базе
+          if (photo.url && photo.url.startsWith(`${config.API_URL}/uploads/`)) {
+            return photo;
+          }
 
-        return photo;
-      });
+          // Для локальных фото создаем File объект
+          if (photo.fileData) {
+            const file = new File([photo.fileData], photo.fileName, {
+              type: photo.fileType,
+            });
+            return {
+              ...photo,
+              file: file,
+            };
+          }
+
+          return photo;
+        })
+        .sort(
+          (a, b) =>
+            new Date(b.uploadedAt || b.createdAt) -
+            new Date(a.uploadedAt || a.createdAt)
+        );
     } catch (error) {
       console.error("Ошибка загрузки фотографий:", error);
+      return [];
+    }
+  }
+
+  async getServerPhotos() {
+    try {
+      const response = await fetch(`${config.API_URL}/api/files`);
+
+      if (!response.ok) {
+        // Если сервер недоступен, возвращаем пустой массив
+        console.warn("Сервер недоступен для загрузки фотографий");
+        return [];
+      }
+
+      const data = await response.json();
+
+      // Преобразуем серверные файлы в формат, совместимый с нашими фотографиями
+      return data.files.map((file) => ({
+        id: `server-${file.filename}`, // Уникальный ID для серверных файлов
+        name: file.filename,
+        size: file.size,
+        status: "uploaded",
+        createdAt: file.uploadedAt,
+        uploadedAt: file.uploadedAt,
+        url: `${config.API_URL}${file.url}`,
+        serverFilename: file.filename,
+        isServerPhoto: true, // Флаг для идентификации серверных фото
+      }));
+    } catch (error) {
+      console.warn("Ошибка загрузки серверных фотографий:", error);
       return [];
     }
   }
@@ -118,7 +176,31 @@ class PhotoService {
         await this.initDB();
       }
 
-      // Получаем информацию о фотографии перед удалением
+      // Проверяем, является ли это серверной фотографией
+      if (photoId.startsWith("server-")) {
+        // Для серверных фотографий удаляем только с сервера
+        const serverFilename = photoId.replace("server-", "");
+        try {
+          const response = await fetch(
+            `${config.API_URL}/api/files/${serverFilename}`,
+            {
+              method: "DELETE",
+            }
+          );
+
+          if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+          }
+
+          console.log(`Файл ${serverFilename} успешно удален с сервера`);
+        } catch (serverError) {
+          console.error("Ошибка при удалении файла с сервера:", serverError);
+          throw serverError;
+        }
+        return;
+      }
+
+      // Получаем информацию о локальной фотографии перед удалением
       const photo = await this.db.get(STORE_NAME, photoId);
 
       // Удаляем файл с сервера, если он был загружен

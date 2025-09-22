@@ -182,9 +182,12 @@ const PhotoItem = memo(
           </div>
           <div className={`photo-status ${getStatusClass(photo.status)}`}>
             {getStatusText(photo.status)}
+            {photo.isServerPhoto && (
+              <span style={{ marginLeft: "5px", fontSize: "10px" }}>🌐</span>
+            )}
           </div>
           <div style={{ display: "flex", gap: "8px", marginTop: "8px" }}>
-            {photo.status === "error" && isOnline && (
+            {photo.status === "error" && isOnline && !photo.isServerPhoto && (
               <button
                 className="retry-button"
                 onClick={handleRetryClick}
