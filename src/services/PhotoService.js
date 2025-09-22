@@ -1,5 +1,5 @@
 import { openDB } from "idb";
-import config from "../../config.js";
+import config from "../config.js";
 
 const DB_NAME = "PhotoPWA";
 const DB_VERSION = 1;
