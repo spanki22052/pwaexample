@@ -312,6 +312,16 @@ class PhotoService {
       return transformedPhotos;
     } catch (error) {
       console.error("Ошибка загрузки фотографий с сервера:", error);
+
+      // Более подробная информация об ошибках
+      if (error.message.includes("Failed to fetch")) {
+        console.error("🚨 Возможные причины:");
+        console.error("1. Сервер недоступен по адресу:", config.API_URL);
+        console.error("2. CORS ошибка - проверьте настройки сервера");
+        console.error("3. Content Security Policy блокирует запрос");
+        console.error("4. Нет интернет соединения");
+      }
+
       return [];
     }
   }

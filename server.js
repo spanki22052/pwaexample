@@ -14,7 +14,20 @@ if (!fs.existsSync(uploadDir)) {
 }
 
 // Настройка CORS
-app.use(cors());
+const corsOptions = {
+  origin: [
+    "http://localhost:3000",
+    "http://localhost:3001",
+    "http://109.205.212.29",
+    "http://109.205.212.29:3000",
+    "http://109.205.212.29:3001",
+  ],
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+};
+
+app.use(cors(corsOptions));
 app.use(express.json());
 
 // Настройка multer для загрузки файлов
