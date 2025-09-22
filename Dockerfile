@@ -7,7 +7,6 @@ WORKDIR /app
 # Копируем только package.json файлы для установки зависимостей
 # Это позволяет кэшировать слой с node_modules если зависимости не изменились
 COPY package*.json ./
-COPY server-package.json ./
 
 # Устанавливаем зависимости для React приложения
 RUN npm ci --only=production --silent
@@ -15,8 +14,12 @@ RUN npm ci --only=production --silent
 # Устанавливаем serve глобально для статического хостинга
 RUN npm install -g serve
 
-# Устанавливаем зависимости для сервера
-RUN mkdir -p server && cp server-package.json server/package.json && cd server && npm ci --only=production --silent
+# Создаем папку для сервера и устанавливаем зависимости
+RUN mkdir -p server
+COPY server-package.json ./server/package.json
+WORKDIR /app/server
+RUN npm install --only=production --silent
+WORKDIR /app
 
 # Этап сборки приложения
 FROM node:18-alpine AS builder

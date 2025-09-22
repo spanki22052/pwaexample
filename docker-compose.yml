@@ -4,17 +4,11 @@ services:
       context: .
       dockerfile: Dockerfile
       target: production
-      # Кэшируем слои Docker для быстрой пересборки
-      cache_from:
-        - node:18-alpine
     ports:
       - "3000:3000"  # React приложение
       - "3001:3001"  # Node.js сервер
     volumes:
       - ./uploads:/app/uploads  # Монтируем папку для загруженных файлов
-      # Создаем именованный том для node_modules чтобы избежать конфликтов
-      - node_modules_cache:/app/node_modules
-      - server_node_modules_cache:/app/server/node_modules
     environment:
       - NODE_ENV=production
       - PORT=3000
@@ -29,13 +23,6 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
-
-# Именованные тома для кэширования node_modules
-volumes:
-  node_modules_cache:
-    driver: local
-  server_node_modules_cache:
-    driver: local
 
 networks:
   photo-pwa-network:

@@ -1,0 +1,22 @@
+version: '3.8'
+
+services:
+  photo-pwa:
+    build: 
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    ports:
+      - "3000:3000"  # React приложение
+      - "3001:3001"  # Node.js сервер
+    volumes:
+      - ./uploads:/app/uploads  # Монтируем папку для загруженных файлов
+    environment:
+      - NODE_ENV=development
+      - PORT=3000
+      - SERVER_PORT=3001
+    restart: unless-stopped
+
+networks:
+  default:
+    driver: bridge
