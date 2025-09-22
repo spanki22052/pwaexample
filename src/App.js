@@ -33,6 +33,7 @@ function App() {
       setIsLoading(true);
       const savedPhotos = await photoService.getAllPhotos();
       setPhotos(savedPhotos);
+      console.log(savedPhotos);
     } catch (error) {
       console.error("Ошибка загрузки фотографий:", error);
     } finally {

@@ -124,6 +124,8 @@ class PhotoService {
       }
 
       const data = await response.json();
+      console.log(config);
+      console.log(response.json());
 
       // Преобразуем серверные файлы в формат, совместимый с нашими фотографиями
       return data.files.map((file) => ({

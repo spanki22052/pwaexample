@@ -6,8 +6,8 @@ const config = {
     ENV: "development",
   },
   production: {
-    API_URL: "http://109.205.212.29",
-    WS_URL: "ws://109.205.212.29",
+    API_URL: "http://109.205.212.29:3001",
+    WS_URL: "ws://109.205.212.29:3001",
     ENV: "production",
   },
 };
