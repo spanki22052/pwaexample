@@ -13,6 +13,9 @@ services:
       - NODE_ENV=production
       - PORT=3000
       - SERVER_PORT=3001
+      - REACT_APP_ENV=production
+      - REACT_APP_API_URL=http://109.205.212.29
+      - REACT_APP_WS_URL=ws://109.205.212.29
     restart: unless-stopped
     networks:
       - photo-pwa-network

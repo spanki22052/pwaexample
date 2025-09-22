@@ -1,4 +1,5 @@
 import { openDB } from "idb";
+import config from "../../config.js";
 
 const DB_NAME = "PhotoPWA";
 const DB_VERSION = 1;
@@ -60,7 +61,7 @@ class PhotoService {
         if (photo.status === "uploaded" && photo.serverFilename) {
           return {
             ...photo,
-            url: `http://localhost:3001/uploads/${photo.serverFilename}`,
+            url: `${config.API_URL}/uploads/${photo.serverFilename}`,
             // Не создаем File объект для загруженных фото, он не нужен
           };
         }
@@ -124,7 +125,7 @@ class PhotoService {
       if (photo && photo.serverFilename) {
         try {
           const response = await fetch(
-            `http://localhost:3001/api/files/${photo.serverFilename}`,
+            `${config.API_URL}/api/files/${photo.serverFilename}`,
             {
               method: "DELETE",
             }
@@ -165,15 +166,15 @@ class PhotoService {
       formData.append("name", photoData.name);
       formData.append("createdAt", photoData.createdAt);
 
-      // Отправляем на локальный сервер
+      // Отправляем на сервер
       // Если сервер не запущен, используем httpbin.org для демонстрации
-      let apiUrl = "http://localhost:3001/api/upload";
+      let apiUrl = `${config.API_URL}/api/upload`;
 
-      // Проверяем, доступен ли локальный сервер
+      // Проверяем, доступен ли сервер
       try {
-        await fetch("http://localhost:3001/api/files", { method: "HEAD" });
+        await fetch(`${config.API_URL}/api/files`, { method: "HEAD" });
       } catch {
-        // Если локальный сервер недоступен, используем httpbin
+        // Если сервер недоступен, используем httpbin
         apiUrl = "https://httpbin.org/post";
       }
 

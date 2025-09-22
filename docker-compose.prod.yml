@@ -1,0 +1,32 @@
+services:
+  photo-pwa:
+    build: 
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    ports:
+      - "80:3000"   # Продакшн на 80 порту
+      - "3001:3001" # API сервер
+    volumes:
+      - ./uploads:/app/uploads  # Монтируем папку для загруженных файлов
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - SERVER_PORT=3001
+      - REACT_APP_ENV=production
+      - REACT_APP_API_URL=http://109.205.212.29
+      - REACT_APP_WS_URL=ws://109.205.212.29
+    restart: unless-stopped
+    networks:
+      - photo-pwa-network
+    # Добавляем проверку здоровья
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000", "||", "exit", "1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+networks:
+  photo-pwa-network:
+    driver: bridge
