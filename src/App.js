@@ -15,6 +15,8 @@ function App() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncInfo, setSyncInfo] = useState(null);
+  const [localDataStats, setLocalDataStats] = useState({ count: 0, sizeKB: 0 });
+  const [isUploading, setIsUploading] = useState(false);
 
   // Проверка статуса сети
   useEffect(() => {
@@ -30,31 +32,48 @@ function App() {
     };
   }, []);
 
-  const loadPhotos = useCallback(async (withSync = false) => {
+  const calculateLocalDataStats = useCallback(async () => {
     try {
-      setIsLoading(true);
-      if (withSync) setIsSyncing(true);
-
-      let savedPhotos;
-
-      if (withSync) {
-        // Загружаем с синхронизацией с сервером
-        savedPhotos = await photoService.getAllPhotosWithSync();
-        console.log("Фотографии загружены с синхронизацией с сервером");
-      } else {
-        // Обычная загрузка из локальной базы
-        savedPhotos = await photoService.getAllPhotos();
-      }
-
-      setPhotos(savedPhotos);
-      console.log(`Загружено ${savedPhotos.length} фотографий`);
+      const stats = await photoService.getLocalDataStats();
+      setLocalDataStats(stats);
     } catch (error) {
-      console.error("Ошибка загрузки фотографий:", error);
-    } finally {
-      setIsLoading(false);
-      setIsSyncing(false);
+      console.error("Ошибка расчета статистики:", error);
+      setLocalDataStats({ count: 0, sizeKB: 0 });
     }
   }, []);
+
+  const loadPhotos = useCallback(
+    async (withSync = false) => {
+      try {
+        setIsLoading(true);
+        if (withSync) setIsSyncing(true);
+
+        let savedPhotos;
+
+        if (withSync) {
+          // Загружаем с синхронизацией с сервером
+          savedPhotos = await photoService.getAllPhotosWithSync();
+          console.log("Фотографии загружены с синхронизацией с сервером");
+        } else {
+          // Обычная загрузка из локальной базы
+          savedPhotos = await photoService.getAllPhotos();
+        }
+
+        setPhotos(savedPhotos);
+        console.log(`Загружено ${savedPhotos.length} фотографий`);
+
+        // Обновляем статистику локальных данных
+        await calculateLocalDataStats();
+        await photoService.syncWithServer();
+      } catch (error) {
+        console.error("Ошибка загрузки фотографий:", error);
+      } finally {
+        setIsLoading(false);
+        setIsSyncing(false);
+      }
+    },
+    [calculateLocalDataStats]
+  );
 
   const retryPendingUploads = useCallback(async () => {
     try {
@@ -64,9 +83,25 @@ function App() {
         (photo) => photo.status === "pending"
       );
 
+      let uploadedCount = 0;
       for (const photo of pendingPhotos) {
-        await photoService.uploadPhoto(photo);
+        try {
+          await photoService.uploadPhoto(photo);
+          uploadedCount++;
+        } catch (uploadError) {
+          console.error(`Ошибка загрузки фото ${photo.name}:`, uploadError);
+        }
       }
+
+      // Если были успешно загружены фото, выполняем синхронизацию
+      if (uploadedCount > 0) {
+        console.log(
+          `✅ Успешно загружено ${uploadedCount} фото, начинаем синхронизацию...`
+        );
+        await photoService.syncWithServer();
+        console.log("🔄 Синхронизация завершена");
+      }
+
       // Перезагружаем список фотографий
       await loadPhotos();
     } catch (error) {
@@ -127,12 +162,35 @@ function App() {
       // Пытаемся отправить, если есть интернет
       if (isOnline) {
         try {
+          setIsUploading(true);
+          setSyncInfo("Загрузка фото на сервер...");
+
           await photoService.uploadPhoto(photoData);
-          await loadPhotos(); // Обновляем статус
+          console.log(
+            "✅ Фото успешно загружено на сервер, начинаем синхронизацию..."
+          );
+
+          setSyncInfo("Синхронизация и очистка локальных данных...");
+
+          // Автоматическая синхронизация после успешной загрузки
+          await photoService.syncWithServer();
+          console.log("🔄 Синхронизация завершена");
+
+          setSyncInfo("Обновление интерфейса...");
+
+          // Перезагружаем фото для обновления интерфейса
+          await loadPhotos(true);
+
+          setSyncInfo("✅ Фото загружено и синхронизировано!");
+          setTimeout(() => setSyncInfo(null), 2000);
         } catch (uploadError) {
           console.error("Ошибка загрузки на сервер:", uploadError);
+          setSyncInfo("❌ Ошибка загрузки");
+          setTimeout(() => setSyncInfo(null), 3000);
           // Не блокируем интерфейс, просто логируем ошибку
           await loadPhotos(); // Обновляем статус с ошибкой
+        } finally {
+          setIsUploading(false);
         }
       }
     } catch (error) {
@@ -145,6 +203,12 @@ function App() {
       const photo = photos.find((p) => p.id === photoId);
       if (photo) {
         await photoService.uploadPhoto(photo);
+        console.log("✅ Фото успешно загружено, начинаем синхронизацию...");
+
+        // Автоматическая синхронизация после успешной загрузки
+        await photoService.syncWithServer();
+        console.log("🔄 Синхронизация завершена");
+
         await loadPhotos();
       }
     } catch (error) {
@@ -169,6 +233,8 @@ function App() {
         <div className="loading">
           {isSyncing
             ? "🔄 Синхронизация с сервером..."
+            : isUploading
+            ? "📤 Загрузка фото на сервер..."
             : "Загрузка фотографий..."}
         </div>
       </div>
@@ -197,28 +263,121 @@ function App() {
     }
   };
 
+  const handleCleanupDuplicates = async () => {
+    try {
+      setSyncInfo("Очистка дубликатов...");
+      setIsSyncing(true);
+
+      const cleanedCount = await photoService.cleanupDuplicatePhotos();
+
+      if (cleanedCount > 0) {
+        setSyncInfo(`Удалено дубликатов: ${cleanedCount}`);
+        // Перезагружаем фото после очистки
+        await loadPhotos();
+      } else {
+        setSyncInfo("Дубликаты не найдены");
+      }
+
+      setTimeout(() => setSyncInfo(null), 3000);
+    } catch (error) {
+      console.error("Ошибка очистки дубликатов:", error);
+      setSyncInfo("Ошибка очистки");
+      setTimeout(() => setSyncInfo(null), 3000);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  const handleCleanupLocalData = async () => {
+    try {
+      setSyncInfo("Очистка локальных данных...");
+      setIsSyncing(true);
+
+      const result = await photoService.cleanupAllUploadedLocalData();
+
+      if (result.cleanedCount > 0) {
+        setSyncInfo(
+          `Очищено ${result.cleanedCount} фото (${result.totalSizeKB} KB)`
+        );
+        // Перезагружаем фото после очистки
+        await loadPhotos();
+      } else {
+        setSyncInfo("Нет данных для очистки");
+      }
+
+      setTimeout(() => setSyncInfo(null), 4000);
+    } catch (error) {
+      console.error("Ошибка очистки локальных данных:", error);
+      setSyncInfo("Ошибка очистки");
+      setTimeout(() => setSyncInfo(null), 3000);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
   return (
     <div className="container">
       <header className="header">
         <h1>📸 Photo Upload PWA</h1>
-        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "10px",
+            flexWrap: "wrap",
+          }}
+        >
           <NetworkStatus isOnline={isOnline} />
           {isOnline && (
-            <button
-              onClick={handleSyncWithServer}
-              disabled={isSyncing}
-              style={{
-                background: isSyncing ? "#6c757d" : "#007bff",
-                color: "white",
-                border: "none",
-                padding: "6px 12px",
-                borderRadius: "4px",
-                fontSize: "12px",
-                cursor: isSyncing ? "not-allowed" : "pointer",
-              }}
-            >
-              {isSyncing ? "🔄 Синхронизация..." : "🔄 секс пон"}
-            </button>
+            <>
+              <button
+                onClick={handleSyncWithServer}
+                disabled={isSyncing}
+                style={{
+                  background: isSyncing ? "#6c757d" : "#007bff",
+                  color: "white",
+                  border: "none",
+                  padding: "6px 12px",
+                  borderRadius: "4px",
+                  fontSize: "12px",
+                  cursor: isSyncing ? "not-allowed" : "pointer",
+                }}
+              >
+                {isSyncing ? "🔄 Синхронизация..." : "🔄 Синхронизация"}
+              </button>
+              <button
+                onClick={handleCleanupLocalData}
+                disabled={isSyncing}
+                title="Очистить локальные данные уже загруженных фотографий"
+                style={{
+                  background: isSyncing ? "#6c757d" : "#28a745",
+                  color: "white",
+                  border: "none",
+                  padding: "6px 12px",
+                  borderRadius: "4px",
+                  fontSize: "12px",
+                  cursor: isSyncing ? "not-allowed" : "pointer",
+                }}
+              >
+                🧹 Очистить локальные
+              </button>
+              <button
+                onClick={handleCleanupDuplicates}
+                disabled={isSyncing}
+                title="Удалить дубликаты фотографий"
+                style={{
+                  background: isSyncing ? "#6c757d" : "#dc3545",
+                  color: "white",
+                  border: "none",
+                  padding: "6px 12px",
+                  borderRadius: "4px",
+                  fontSize: "12px",
+                  cursor: isSyncing ? "not-allowed" : "pointer",
+                }}
+              >
+                🗑️ Дубликаты
+              </button>
+            </>
           )}
           <div
             style={{
@@ -227,11 +386,22 @@ function App() {
               background: "#f8f9fa",
               padding: "4px 8px",
               borderRadius: "4px",
+              display: "flex",
+              flexDirection: "column",
+              gap: "2px",
             }}
           >
-            📊 Всего: {photos.length} | 🌐 Сервер:{" "}
-            {photos.filter((p) => p.isFromServer).length} | 📱 Локальные:{" "}
-            {photos.filter((p) => !p.isFromServer).length}
+            <div>
+              📊 Всего: {photos.length} | 🌐 Сервер:{" "}
+              {photos.filter((p) => p.isFromServer).length} | 📱 Локальные:{" "}
+              {photos.filter((p) => !p.isFromServer).length}
+            </div>
+            {localDataStats.count > 0 && (
+              <div style={{ fontSize: "11px", color: "#888" }}>
+                💾 Локальных данных: {localDataStats.count} фото (
+                {localDataStats.sizeKB} KB)
+              </div>
+            )}
           </div>
         </div>
       </header>

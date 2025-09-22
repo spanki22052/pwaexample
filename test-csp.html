@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Тест CSP и CORS</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        margin: 20px;
+      }
+      .result {
+        margin: 10px 0;
+        padding: 10px;
+        border-radius: 5px;
+      }
+      .success {
+        background: #d4edda;
+        color: #155724;
+        border: 1px solid #c3e6cb;
+      }
+      .error {
+        background: #f8d7da;
+        color: #721c24;
+        border: 1px solid #f5c6cb;
+      }
+      .info {
+        background: #d1ecf1;
+        color: #0c5460;
+        border: 1px solid #bee5eb;
+      }
+      button {
+        padding: 10px 20px;
+        margin: 5px;
+        cursor: pointer;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>🧪 Тест подключения к серверу</h1>
+
+    <div class="info">
+      <strong>Тестируемые URL:</strong>
+      <ul>
+        <li>Локальный: http://localhost:3001/api/files</li>
+        <li>Продакшн: http://109.205.212.29:3001/api/files</li>
+      </ul>
+    </div>
+
+    <button onclick="testLocalServer()">🏠 Тест локального сервера</button>
+    <button onclick="testProductionServer()">🌐 Тест продакшн сервера</button>
+    <button onclick="clearResults()">🧹 Очистить результаты</button>
+
+    <div id="results"></div>
+
+    <script>
+      function addResult(message, type = "info") {
+        const results = document.getElementById("results");
+        const div = document.createElement("div");
+        div.className = `result ${type}`;
+        div.innerHTML = `<strong>${new Date().toLocaleTimeString()}:</strong> ${message}`;
+        results.appendChild(div);
+        results.scrollTop = results.scrollHeight;
+      }
+
+      function clearResults() {
+        document.getElementById("results").innerHTML = "";
+      }
+
+      async function testServer(url, name) {
+        addResult(`🔄 Тестирование ${name}: ${url}`, "info");
+
+        try {
+          const startTime = Date.now();
+          const response = await fetch(url);
+          const endTime = Date.now();
+
+          addResult(
+            `📊 Ответ получен за ${endTime - startTime}мс, статус: ${
+              response.status
+            }`,
+            "info"
+          );
+
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+          }
+
+          const data = await response.json();
+          const filesCount = data.files?.length || 0;
+
+          addResult(
+            `✅ ${name} работает! Найдено файлов: ${filesCount}`,
+            "success"
+          );
+
+          if (filesCount > 0) {
+            addResult(
+              `📄 Пример файла: ${data.files[0].filename} (${Math.round(
+                data.files[0].size / 1024
+              )}KB)`,
+              "info"
+            );
+          }
+        } catch (error) {
+          addResult(`❌ Ошибка ${name}: ${error.message}`, "error");
+
+          // Диагностика ошибок
+          if (error.message.includes("Failed to fetch")) {
+            addResult(
+              `🔍 Возможные причины: CSP блокировка, CORS ошибка, сервер недоступен`,
+              "error"
+            );
+          } else if (error.message.includes("NetworkError")) {
+            addResult(
+              `🔍 Сетевая ошибка: проверьте интернет соединение`,
+              "error"
+            );
+          }
+        }
+      }
+
+      function testLocalServer() {
+        testServer("http://localhost:3001/api/files", "Локальный сервер");
+      }
+
+      function testProductionServer() {
+        testServer("http://109.205.212.29:3001/api/files", "Продакшн сервер");
+      }
+
+      // Автоматический тест при загрузке страницы
+      window.addEventListener("load", () => {
+        addResult("🚀 Страница загружена. Готов к тестированию!", "info");
+
+        // Информация о браузере
+        addResult(`🌐 Браузер: ${navigator.userAgent}`, "info");
+        addResult(`📡 Онлайн: ${navigator.onLine ? "Да" : "Нет"}`, "info");
+      });
+    </script>
+  </body>
+</html>

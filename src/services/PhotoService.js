@@ -258,6 +258,24 @@ class PhotoService {
         serverFilename
       );
 
+      // ✨ НОВАЯ ЛОГИКА: Очищаем локальные файловые данные после успешной загрузки
+      console.log(
+        `🧹 Начинаем очистку локальных данных для фото: ${photoData.name}`
+      );
+      const cleanupSuccess = await this.cleanupLocalFileData(
+        photoData.id,
+        serverFilename
+      );
+      if (cleanupSuccess) {
+        console.log(
+          `✅ Локальные данные успешно очищены для: ${photoData.name}`
+        );
+      } else {
+        console.log(
+          `⚠️ Не удалось очистить локальные данные для: ${photoData.name}`
+        );
+      }
+
       return {
         id: photoData.id,
         url: result.url || `https://example.com/photos/${photoData.id}.jpg`,
@@ -272,6 +290,45 @@ class PhotoService {
       await this.updatePhotoStatus(photoData.id, "error", error.message);
 
       throw error;
+    }
+  }
+
+  // Очищает локальные файловые данные для загруженной фотографии
+  async cleanupLocalFileData(photoId, serverFilename) {
+    try {
+      if (!this.db) await this.initDB();
+
+      const photo = await this.db.get(STORE_NAME, photoId);
+      if (photo && photo.status === "uploaded" && serverFilename) {
+        // Удаляем локальные файловые данные
+        const originalFileData = photo.fileData;
+
+        delete photo.fileData;
+        delete photo.file;
+
+        // Устанавливаем серверный URL
+        photo.url = `${config.API_URL}/uploads/${serverFilename}`;
+        photo.serverFilename = serverFilename;
+        photo.uploadedAt = new Date().toISOString();
+
+        await this.db.put(STORE_NAME, photo);
+
+        // Логируем информацию об очистке
+        const fileSizeKB = originalFileData
+          ? Math.round(originalFileData.byteLength / 1024)
+          : 0;
+        console.log(
+          `🧹 Очищены локальные данные для фото "${photo.name}" (${fileSizeKB} KB)`
+        );
+        console.log(`📡 Теперь используется серверный URL: ${photo.url}`);
+
+        return true;
+      }
+
+      return false;
+    } catch (error) {
+      console.error("Ошибка очистки локальных файловых данных:", error);
+      return false;
     }
   }
 
@@ -342,16 +399,54 @@ class PhotoService {
         serverPhotos.map((photo) => photo.serverFilename)
       );
 
-      // Обновляем статус локальных фото, которые есть на сервере
+      // Обрабатываем локальные фото, которые есть на сервере
+      const photosToCleanup = [];
       for (const localPhoto of localPhotos) {
         if (
           localPhoto.serverFilename &&
           serverFilenames.has(localPhoto.serverFilename)
         ) {
+          // Если локальное фото уже загружено на сервер
           if (localPhoto.status !== "uploaded") {
             localPhoto.status = "uploaded";
             await this.db.put(STORE_NAME, localPhoto);
           }
+
+          // Помечаем для очистки локальных данных (File объект и fileData)
+          if (localPhoto.fileData || localPhoto.file) {
+            photosToCleanup.push(localPhoto.id);
+            console.log(
+              `🧹 Помечаем для очистки локальные данные: ${localPhoto.name}`
+            );
+          }
+        }
+      }
+
+      // Очищаем локальные данные у фото, которые уже на сервере
+      for (const photoId of photosToCleanup) {
+        const photo = await this.db.get(STORE_NAME, photoId);
+        if (photo) {
+          const originalFileData = photo.fileData;
+          const fileSizeKB = originalFileData
+            ? Math.round(originalFileData.byteLength / 1024)
+            : 0;
+
+          // Удаляем локальные файловые данные, оставляя только метаданные
+          delete photo.fileData;
+          delete photo.file;
+
+          // Убеждаемся, что есть серверный URL
+          if (photo.serverFilename && !photo.url) {
+            photo.url = `${config.API_URL}/uploads/${photo.serverFilename}`;
+          }
+
+          // Обновляем время загрузки
+          photo.uploadedAt = new Date().toISOString();
+
+          await this.db.put(STORE_NAME, photo);
+          console.log(
+            `✅ Очищены локальные данные для: ${photo.name} (${fileSizeKB} KB)`
+          );
         }
       }
 
@@ -384,6 +479,52 @@ class PhotoService {
     }
   }
 
+  // Удаляет локальные записи фото, которые уже есть на сервере
+  async cleanupDuplicatePhotos() {
+    try {
+      if (!this.db) await this.initDB();
+
+      console.log("🧹 Начинаем очистку дубликатов...");
+
+      // Получаем все локальные фото
+      const localPhotos = await this.db.getAll(STORE_NAME);
+
+      // Получаем серверные фото
+      const serverPhotos = await this.loadPhotosFromServer();
+      const serverFilenames = new Set(
+        serverPhotos.map((photo) => photo.serverFilename)
+      );
+
+      let cleanedCount = 0;
+      const photosToRemove = [];
+
+      for (const localPhoto of localPhotos) {
+        // Если это локальное фото, которое уже загружено на сервер
+        if (
+          localPhoto.serverFilename &&
+          serverFilenames.has(localPhoto.serverFilename) &&
+          localPhoto.status === "uploaded" &&
+          !localPhoto.isFromServer // Не удаляем записи серверных фото
+        ) {
+          photosToRemove.push(localPhoto.id);
+          console.log(`🗑️ Удаляем локальный дубликат: ${localPhoto.name}`);
+        }
+      }
+
+      // Удаляем локальные дубликаты
+      for (const photoId of photosToRemove) {
+        await this.db.delete(STORE_NAME, photoId);
+        cleanedCount++;
+      }
+
+      console.log(`✅ Очистка завершена. Удалено дубликатов: ${cleanedCount}`);
+      return cleanedCount;
+    } catch (error) {
+      console.error("Ошибка очистки дубликатов:", error);
+      return 0;
+    }
+  }
+
   // Получает все фотографии с учетом синхронизации с сервером
   async getAllPhotosWithSync() {
     try {
@@ -398,7 +539,13 @@ class PhotoService {
       // Синхронизируемся с сервером
       await this.syncWithServer();
 
-      // Получаем все фотографии после синхронизации
+      // Очищаем дубликаты (опционально, можно включить/выключить)
+      const cleanedCount = await this.cleanupDuplicatePhotos();
+      if (cleanedCount > 0) {
+        console.log(`🧹 Удалено локальных дубликатов: ${cleanedCount}`);
+      }
+
+      // Получаем все фотографии после синхронизации и очистки
       const allPhotosAfterSync = await this.getAllPhotos();
       console.log(
         `📊 Всего фото после синхронизации: ${allPhotosAfterSync.length}`
@@ -422,6 +569,78 @@ class PhotoService {
       const localPhotos = await this.getAllPhotos();
       console.log(`📱 Возвращаем только локальные фото: ${localPhotos.length}`);
       return localPhotos;
+    }
+  }
+
+  // Получает статистику локальных данных (количество и размер)
+  async getLocalDataStats() {
+    try {
+      if (!this.db) await this.initDB();
+
+      const allPhotos = await this.db.getAll(STORE_NAME);
+      const photosWithLocalData = allPhotos.filter(
+        (photo) => photo.fileData || photo.file
+      );
+
+      let totalSizeKB = 0;
+      for (const photo of photosWithLocalData) {
+        if (photo.fileData) {
+          totalSizeKB += Math.round(photo.fileData.byteLength / 1024);
+        }
+      }
+
+      return {
+        count: photosWithLocalData.length,
+        sizeKB: totalSizeKB,
+      };
+    } catch (error) {
+      console.error("Ошибка получения статистики локальных данных:", error);
+      return { count: 0, sizeKB: 0 };
+    }
+  }
+
+  // Очищает локальные файловые данные для всех уже загруженных фотографий
+  async cleanupAllUploadedLocalData() {
+    try {
+      if (!this.db) await this.initDB();
+
+      console.log(
+        "🧹 Начинаем массовую очистку локальных данных для загруженных фото..."
+      );
+
+      const allPhotos = await this.db.getAll(STORE_NAME);
+      const uploadedPhotos = allPhotos.filter(
+        (photo) =>
+          photo.status === "uploaded" &&
+          photo.serverFilename &&
+          (photo.fileData || photo.file)
+      );
+
+      let cleanedCount = 0;
+      let totalSizeKB = 0;
+
+      for (const photo of uploadedPhotos) {
+        const fileSizeKB = photo.fileData
+          ? Math.round(photo.fileData.byteLength / 1024)
+          : 0;
+
+        const success = await this.cleanupLocalFileData(
+          photo.id,
+          photo.serverFilename
+        );
+        if (success) {
+          cleanedCount++;
+          totalSizeKB += fileSizeKB;
+        }
+      }
+
+      console.log(
+        `✅ Очищено локальных данных: ${cleanedCount} фото (${totalSizeKB} KB)`
+      );
+      return { cleanedCount, totalSizeKB };
+    } catch (error) {
+      console.error("Ошибка массовой очистки локальных данных:", error);
+      return { cleanedCount: 0, totalSizeKB: 0 };
     }
   }
 
